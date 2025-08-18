@@ -1,82 +1,120 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
 import asyncio
 import os
-from datetime import datetime, time
+from datetime import datetime, timedelta, time
 from zoneinfo import ZoneInfo
+from typing import List
 
 from aiogram import Bot, Dispatcher
 from aiogram.types import Message
 from aiogram.filters import Command
 
-# ==== ENV ====
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8273684666:AAHStkIEUBSsCFdhps_yMYfRGEOIP4Q8VHw")
-USER_ID = int(os.getenv("USER_ID", "1370058711"))
+# --- HTTP server (Render Web Service uchun portni band qilish) ---
+from fastapi import FastAPI
+import uvicorn
 
-# "HH:MM" formatda, UZT vaqtida
-SCHEDULE_1 = os.getenv("SCHEDULE_1", "11:55")  # London oldidan
-SCHEDULE_2 = os.getenv("SCHEDULE_2", "18:55")  # NY oldidan
+# ================== ENV ==================
+BOT_TOKEN  = os.getenv("BOT_TOKEN")  # BotFather token
+USER_ID    = int(os.getenv("USER_ID", "0"))  # Sizning Telegram ID
+SCHEDULE_1 = os.getenv("SCHEDULE_1", "11:55")  # HH:MM (UZT)
+SCHEDULE_2 = os.getenv("SCHEDULE_2", "18:55")  # HH:MM (UZT), ixtiyoriy
+TZ_NAME    = os.getenv("TZ", "Asia/Tashkent")
+PORT       = int(os.getenv("PORT", "8000"))  # Render Web Service uchun
 
-TZ = ZoneInfo("Asia/Tashkent")
+TZ = ZoneInfo(TZ_NAME)
 
-bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher()
+if not BOT_TOKEN:
+    raise SystemExit("❌ BOT_TOKEN env o‘rnatilmagan")
+if USER_ID == 0:
+    raise SystemExit("❌ USER_ID env o‘rnatilmagan yoki 0")
 
-# --------- SIGNAL MATNI (bu yerda har kuni yangilab generatsiya qilamiz) ---------
-def build_daily_signal() -> str:
-    # Siz keyin istasangiz men bilan birga bu joyni real tahlilga bog'laymiz
+# ================== TELEGRAM ==================
+bot = Bot(BOT_TOKEN)
+dp  = Dispatcher()
+
+# ================== XABAR BLOKLARI ==================
+def build_news_outlook() -> str:
+    """
+    Kutilayotgan yangiliklar (hozircha shablon).
+    Keyin bu qismni webdan avtomatik yangilik olishga ham ulash mumkin.
+    """
     return (
-        "📊 *XAU/USD — Kundalik & Intraday Signal*\n"
-        "— *Kundalik (Swing)*\n"
-        "  • Buy: 3331–3334  | SL: 3324  | TP1: 3345  | TP2: 3360\n"
-        "— *Intraday (5–15m)*\n"
-        "  • Agar 3334 ustida mustahkam bo‘lsa: Buy 3335 | SL 3329 | TP 3342/3348\n"
-        "  • Agar 3328 pastiga sinib ketsa: Sell 3327 | SL 3333 | TP 3320/3315\n"
-        "📝 Eslatma: London/NY ochilishida volatilitet yuqori — SL shart."
+        "📢 *Bugungi muhim yangiliklar*\n"
+        "• 17:30 UZT – AQSh CPI (inflyatsiya) ma’lumotlari\n"
+        "• 22:00 UZT – FOMC bayonoti\n\n"
+        "📝 Kutilayotgan ta’sir:\n"
+        "  – Kuchli inflyatsiya → dollar kuchayishi → oltin pasayishi\n"
+        "  – Yumshoq natija → oltin ko‘tarilishi mumkin"
     )
 
-# --------- JO'NATISH FUNKSIYASI ---------
+def build_trade_zones() -> str:
+    return (
+        "📊 *XAU/USD — Buy/Sell zonalar*\n\n"
+        "— *Buy zona*: 3331–3334 (support ustida)\n"
+        "   ⛔ SL: 3324 | 🎯 TP1: 3345 | 🎯 TP2: 3360\n\n"
+        "— *Sell zona*: agar 3328 pastga tushsa\n"
+        "   ⛔ SL: 3333 | 🎯 TP1: 3320 | 🎯 TP2: 3315"
+    )
+
+# --------- SIGNAL YUBORISH ---------
 async def send_signal():
-    text = build_daily_signal()
-    await bot.send_message(USER_ID, text, parse_mode="Markdown")
+    try:
+        await bot.send_message(USER_ID, build_news_outlook(), parse_mode="Markdown")
+        await bot.send_message(USER_ID, build_trade_zones(), parse_mode="Markdown")
+    except Exception as e:
+        try:
+            await bot.send_message(USER_ID, f"⚠️ Signal jo‘natishda xato: {e}")
+        except Exception:
+            pass
 
-# --------- SODDA SCHEDULER (asyncio bilan) ---------
+# ================== SCHEDULER ==================
+def parse_hhmm(s: str) -> time:
+    h, m = map(int, s.strip().split(":"))
+    return time(h, m, tzinfo=TZ)
+
+def next_run_for(t: time, now: datetime) -> datetime:
+    candidate = now.replace(hour=t.hour, minute=t.minute, second=0, microsecond=0)
+    return candidate if candidate > now else candidate + timedelta(days=1)
+
+def current_schedule_times() -> List[time]:
+    times = []
+    if SCHEDULE_1:
+        times.append(parse_hhmm(SCHEDULE_1))
+    if SCHEDULE_2:
+        try:
+            if SCHEDULE_2.strip():
+                times.append(parse_hhmm(SCHEDULE_2))
+        except Exception:
+            pass
+    return times or [parse_hhmm("11:55")]
+
 async def scheduler():
-    # Matnli HH:MM ni time() ga aylantiramiz
-    h1, m1 = map(int, SCHEDULE_1.split(":"))
-    h2, m2 = map(int, SCHEDULE_2.split(":"))
-    t1 = time(h1, m1, tzinfo=TZ)
-    t2 = time(h2, m2, tzinfo=TZ)
-
+    """
+    Oddiy asyncio scheduler: belgilangan UZT vaqtlarda signal yuboradi.
+    """
     while True:
         now = datetime.now(TZ)
-        # keyingi triggerlardan eng yaqinini topamiz
-        today_t1 = now.replace(hour=t1.hour, minute=t1.minute, second=0, microsecond=0)
-        today_t2 = now.replace(hour=t2.hour, minute=t2.minute, second=0, microsecond=0)
-
-        targets = [today_t1, today_t2]
-        # agar o‘tib ketgan bo‘lsa, ertangi kunni olamiz
-        targets = [dt if dt > now else dt.replace(day=now.day, hour=dt.hour, minute=dt.minute) for dt in targets]
-        # «ertangi» holat uchun:
-        targets = [dt if dt > now else (dt + timedelta(days=1)) for dt in targets]
-
-        next_run = min(targets)
-        await asyncio.sleep((next_run - now).total_seconds())
-        try:
-            await send_signal()
-        except Exception as e:
-            await bot.send_message(USER_ID, f"⚠️ Signal jo'natishda xatolik: {e}")
-        # keyingi iteratsiya
+        times = current_schedule_times()
+        next_run = min(next_run_for(t, now) for t in times)
+        sleep_s = max(1, int((next_run - now).total_seconds()))
+        print(f"[scheduler] now={now.astimezone(TZ)} next_run={next_run.astimezone(TZ)} sleep={sleep_s}s")
+        await asyncio.sleep(sleep_s)
+        await send_signal()
         await asyncio.sleep(1)
 
+# ================== HANDLERS ==================
 @dp.message(Command("start"))
 async def start_cmd(message: Message):
-    if message.from_user.id == USER_ID:
-        await message.answer(
-            "✅ Signal bot ishga tushdi!\n"
-            f"⏰ Avtomatik vaqtlar: {SCHEDULE_1} va {SCHEDULE_2} (UZT).\n"
-            "👉 /now — hozir test signal yuborish"
-        )
-    else:
-        await message.answer("❌ Sizga ruxsat yo‘q.")
+    if message.from_user.id != USER_ID:
+        return await message.answer("❌ Ruxsat yo‘q.")
+    sched = ", ".join(t.strftime("%H:%M") for t in current_schedule_times())
+    await message.answer(
+        "✅ Signal bot ishga tushdi!\n"
+        f"⏰ Jadval (UZT, {TZ_NAME}): {sched}\n"
+        "👉 /now — hozir test signal yuborish"
+    )
 
 @dp.message(Command("now"))
 async def now_cmd(message: Message):
@@ -85,10 +123,27 @@ async def now_cmd(message: Message):
     else:
         await message.answer("❌ Ruxsat yo‘q.")
 
+# ================== HTTP SERVER (Render uchun) ==================
+app = FastAPI()
+
+@app.get("/")
+def root():
+    return {"status": "ok", "service": "xau-signal-bot", "tz": TZ_NAME, "schedules": [SCHEDULE_1, SCHEDULE_2]}
+
+@app.get("/healthz")
+def healthz():
+    return {"ok": True}
+
+async def run_http():
+    config = uvicorn.Config(app, host="0.0.0.0", port=PORT, log_level="warning")
+    server = uvicorn.Server(config)
+    await server.serve()
+
+# ================== ENTRYPOINT ==================
 async def main():
-    loop = asyncio.get_event_loop()
-    loop.create_task(scheduler())          # jadval ishga tushadi
-    await dp.start_polling(bot)            # bot pollingda 24/7
+    asyncio.create_task(run_http())
+    asyncio.create_task(scheduler())
+    await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
