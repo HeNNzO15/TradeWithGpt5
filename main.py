@@ -10,26 +10,33 @@ from typing import List, Dict, Tuple
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
+from aiogram.enums import ParseMode
+from aiogram.client.default import DefaultBotProperties
 
 # --- HTTP server (Render Web Service uchun portni band qilish) ---
 from fastapi import FastAPI
 import uvicorn
 
-# ================== ENV ==================
-BOT_TOKEN  = os.getenv("BOT_TOKEN", "8273684666:AAHStkIEUBSsCFdhps_yMYfRGEOIP4Q8VHw")                     # BotFather token
-USER_ID    = int(os.getenv("USER_ID", "1370058711"))             # Sizning Telegram ID
-SCHEDULE_1 = os.getenv("SCHEDULE_1", "11:55")           # HH:MM (UZT)
-SCHEDULE_2 = os.getenv("SCHEDULE_2", "18:55")           # HH:MM (UZT), ixtiyoriy
+# ================== ENV + ICHKI DEFAULTLAR ==================
+# ❗ Siz so‘raganidek token va ID kod ichida DEFAULT sifatida bor.
+#    Agar Render’da ENV berilsa, ENV ustun bo‘ladi.
+BOT_TOKEN  = os.getenv("BOT_TOKEN", "8273684666:AAHStkIEUBSsCFdhps_yMYfRGEOIP4Q8VHw")  # BotFather token (default ichida)
+USER_ID    = int(os.getenv("USER_ID", "1370058711"))                                     # Sizning Telegram ID (default ichida)
+SCHEDULE_1 = os.getenv("SCHEDULE_1", "11:55")   # HH:MM (UZT)
+SCHEDULE_2 = os.getenv("SCHEDULE_2", "18:55")   # HH:MM (UZT), ixtiyoriy
 TZ_NAME    = os.getenv("TZ", "Asia/Tashkent")
-PORT       = int(os.getenv("PORT", "8000"))             # Render Web Service uchun
+PORT       = int(os.getenv("PORT", "8000"))     # Render Web Service uchun
 
 if not BOT_TOKEN:
-    raise SystemExit("❌ BOT_TOKEN env o‘rnatilmagan")
+    raise SystemExit("❌ BOT_TOKEN env o‘rnatilmagan va default ham berilmagan")
 if USER_ID == 0:
     raise SystemExit("❌ USER_ID env o‘rnatilmagan yoki 0")
 
 TZ = ZoneInfo(TZ_NAME)
-bot = Bot(BOT_TOKEN, parse_mode="HTML")
+
+# ================== TELEGRAM ==================
+# aiogram 3.7+ uchun parse_mode shu tarzda beriladi:
+bot = Bot(BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp  = Dispatcher()
 
 # ================== KICHIK SAQLAGICH ==================
@@ -47,7 +54,7 @@ L = {
         "news_title": "📢 Savdoga ta’sir qiladigan yangiliklar",
         "news_body": (
             "• <b>Yuqori ta’sirli</b>: CPI, NFP, FOMC, AQSh obligatsiya rentabelligi, DXY\n"
-            "• <b>Ta’sir mexanizmi</b>: kuchli USD &rarr; oltin/BTC pasayishi; yumshoq ma’lumotlar &rarr; oltin/BTC o‘sishi\n"
+            "• <b>Ta’sir mexanizmi</b>: kuchli USD → oltin/BTC pasayishi; yumshoq ma’lumotlar → oltin/BTC o‘sishi\n"
         ),
         "links": "🔗 Havolalar:\n{links}",
         "saved": "✅ Tanlov saqlandi: til: {lang}, timeframe: {tf}, aktiv: {asset}\n👉 /signal — istalgan payt shu profil bo‘yicha signal",
@@ -65,7 +72,7 @@ L = {
         "news_title": "📢 Новости, влияющие на торговлю",
         "news_body": (
             "• <b>Высокое влияние</b>: CPI, NFP, FOMC, доходности UST, индекс DXY\n"
-            "• <b>Эффект</b>: сильный доллар &rarr; золото/BTC вниз; слабые данные &rarr; вверх\n"
+            "• <b>Эффект</b>: сильный доллар → золото/BTC вниз; слабые данные → вверх\n"
         ),
         "links": "🔗 Ссылки:\n{links}",
         "saved": "✅ Сохранено: язык: {lang}, таймфрейм: {tf}, актив: {asset}\n👉 /signal — получить сигнал по профилю",
@@ -83,7 +90,7 @@ L = {
         "news_title": "📢 Market-moving news",
         "news_body": (
             "• <b>High-impact</b>: CPI, NFP, FOMC, UST yields, DXY\n"
-            "• <b>Effect</b>: strong USD &rarr; Gold/BTC down; soft data &rarr; up\n"
+            "• <b>Effect</b>: strong USD → Gold/BTC down; soft data → up\n"
         ),
         "links": "🔗 Links:\n{links}",
         "saved": "✅ Saved: lang: {lang}, timeframe: {tf}, asset: {asset}\n👉 /signal — get signal with this profile",
@@ -126,12 +133,8 @@ def asset_kb(lang: str) -> InlineKeyboardMarkup:
 def t(lang: str, key: str, **kw) -> str:
     return L.get(lang, L["en"]).get(key, "").format(**kw)
 
-# ================== SIGNAL GENERATOR (oddiy shablon, timeframe/aktivga mos) ==================
+# ================== SIGNAL GENERATOR (shablon) ==================
 def signal_levels(asset: str, tf: str) -> Tuple[str, str, str, str, str]:
-    """
-    Oddiy, xavfsiz shablon. Keyin real tahlil bilan boyitish mumkin.
-    Qaytaradi: buy, sell, sl, tp1, tp2
-    """
     if asset == "XAUUSD":  # Gold
         if tf in ("1d", "4h", "1h"):
             return "3331–3334", "3328 pastida", "3324", "3345", "3360"
@@ -147,17 +150,14 @@ def signal_levels(asset: str, tf: str) -> Tuple[str, str, str, str, str]:
             return "116000–117000", "114500 pastida", "114000", "118500", "121000"
         else:
             return "116300–116800", "115500 pastida", "115200", "117600", "118800"
-    # default
     return "—", "—", "—", "—", "—"
 
 def news_links(asset: str, lang: str) -> str:
-    # universal kalendarlar
     calendars = [
         ("ForexFactory Calendar", "https://www.forexfactory.com/calendar"),
         ("Investing.com Calendar", "https://www.investing.com/economic-calendar/"),
         ("TradingView Calendar", "https://www.tradingview.com/markets/economic-calendar/"),
     ]
-    # aktivga oid yangiliklar/stream
     if asset == "XAUUSD":
         extras = [
             ("Gold News (Reuters)", "https://www.reuters.com/markets/commodities/gold/"),
@@ -174,7 +174,6 @@ def news_links(asset: str, lang: str) -> str:
             ("Crypto Calendar (CoinMarketCal)", "https://coinmarketcal.com/en/"),
         ]
     items = calendars + extras
-    # HTML linklar
     return "\n".join([f"• <a href='{u}'>{n}</a>" for (n, u) in items])
 
 async def send_composed_signal(chat_id: int, lang: str, asset: str, tf: str):
@@ -210,7 +209,6 @@ async def scheduler():
             await asyncio.sleep(60); continue
         next_run = min(next_run_for(ti, now) for ti in times)
         await asyncio.sleep(max(1, int((next_run - now).total_seconds())))
-        # default — agar foydalanuvchi hali tanlamagan bo‘lsa
         lang = PREFS.get(USER_ID, {}).get("lang", "uz")
         tf   = PREFS.get(USER_ID, {}).get("tf", "1d")
         asset= PREFS.get(USER_ID, {}).get("asset", "XAUUSD")
@@ -260,10 +258,8 @@ async def choose_asset(c: CallbackQuery):
     lang = PREFS.get(USER_ID, {}).get("lang", "uz")
     tf   = PREFS.get(USER_ID, {}).get("tf", "1d")
     PREFS[USER_ID]["asset"] = asset
-    # Saqlanganini bildirish
     pretty = ASSETS[asset]["name"][lang]
     await c.message.answer(t(lang, "saved", lang=lang.upper(), tf=tf, asset=pretty))
-    # Darhol signal yuboramiz
     await send_composed_signal(c.message.chat.id, lang, asset, tf)
     await c.answer()
 
@@ -278,7 +274,6 @@ async def manual_signal(message: Message):
 
 @dp.message(Command("now"))
 async def now_cmd(message: Message):
-    # tezkor test
     if message.from_user.id != USER_ID:
         return await message.answer(t("uz","only_you"))
     lang = PREFS.get(USER_ID, {}).get("lang", "uz")
