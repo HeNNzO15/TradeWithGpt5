@@ -3,7 +3,7 @@
 
 import asyncio
 import os
-from datetime import datetime, timedelta, time
+from datetime import datetime, timedelta, time as dtime
 from zoneinfo import ZoneInfo
 from typing import List, Dict, Tuple
 
@@ -18,10 +18,12 @@ from fastapi import FastAPI
 import uvicorn
 
 # ================== ENV + DEFAULT ==================
+# ❗ Siz xohlaganidek token va ID kod ichida default sifatida bor.
+#    Agar Render’da ENV berilsa, ENV qiymatlari ustun bo‘ladi.
 BOT_TOKEN  = os.getenv("BOT_TOKEN", "8273684666:AAHStkIEUBSsCFdhps_yMYfRGEOIP4Q8VHw")
 USER_ID    = int(os.getenv("USER_ID", "1370058711"))
-SCHEDULE_1 = os.getenv("SCHEDULE_1", "11:55")
-SCHEDULE_2 = os.getenv("SCHEDULE_2", "18:55")
+SCHEDULE_1 = os.getenv("SCHEDULE_1", "11:55")   # UZT (London oldidan)
+SCHEDULE_2 = os.getenv("SCHEDULE_2", "18:55")   # UZT (NY oldidan)
 TZ_NAME    = os.getenv("TZ", "Asia/Tashkent")
 PORT       = int(os.getenv("PORT", "8000"))
 
@@ -37,7 +39,8 @@ bot = Bot(BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp  = Dispatcher()
 
 # ================== SAQLAGICH ==================
-PREFS: Dict[int, Dict[str, str]] = {}
+# Oddiy RAM xotira (istasa DB ga oson ko‘chadi)
+PREFS: Dict[int, Dict[str, str]] = {}  # {user_id: {"lang": "..", "tf": "..", "asset": ".."}}
 
 # ================== LOKALIZATSIYA ==================
 L = {
@@ -46,18 +49,20 @@ L = {
         "choose_tf": "Qaysi <b>timeframe</b>da savdo qilmoqchisiz?",
         "choose_asset": "Qaysi <b>aktiv</b> uchun signal kerak?",
         "signal_title": "📊 {asset} — <b>{tf}</b> signal",
-        "zones": "— <b>Buy</b>: {buy}\n— <b>Sell</b>: {sell}\n⛔ SL: {sl}\n🎯 TP1: {tp1}\n🎯 TP2: {tp2}",
+        "buy_head": "🟢 <b>BUY ssenariy</b>",
+        "sell_head": "🔴 <b>SELL ssenariy</b>",
+        "sl": "⛔ SL: {sl}",
+        "tp": "🎯 TP: {tps}",
+        "risk": "⚖️ <b>Risk boshqaruvi</b>: bitim boshiga depozitning 0.5–1.0% dan ko‘p emas. Yangiliklar vaqtida SL shart.",
         "news_title": "📢 Savdoga ta’sir qiladigan yangiliklar",
         "news_body": (
-            "• <b>Yuqori ta’sirli</b>: CPI, NFP, FOMC, AQSh obligatsiya rentabelligi, DXY\n"
-            "• <b>Ta’sir mexanizmi</b>: kuchli USD → oltin/BTC pasayishi; yumshoq ma’lumotlar → oltin/BTC o‘sishi\n"
+            "• <b>Yuqori ta’sir</b>: CPI, NFP, FOMC, AQSh obligatsiya rentabelligi, DXY\n"
+            "• <b>Effekt</b>: kuchli USD → oltin/BTC pasayishi; yumshoq ma’lumotlar → o‘sishi\n"
         ),
         "links": "🔗 Havolalar:\n{links}",
-        # lang -> lang_code ga o'zgartirildi
-        "saved": "✅ Tanlov saqlandi: til: {lang_code}, timeframe: {tf}, aktiv: {asset}\n👉 /signal — istalgan payt shu profil bo‘yicha signal",
-        "only_you": "❌ Bu bot faqat bitta foydalanuvchi uchun ruxsat etilgan.",
+        "saved": "✅ Tanlov saqlandi: til: {lang_code}, timeframe: {tf}, aktiv: {asset}\n👉 /signal — shu profil bo‘yicha signal",
+        "only_you": "❌ Bu bot faqat sizga ruxsat etilgan.",
         "start_ok": "✅ Bot ishga tushdi. Avval tilni tanlang.",
-        "sent": "✅ Signal yuborildi.",
         "sched_head": "⏰ Avtomatik jadval (UZT): {sched}",
     },
     "ru": {
@@ -65,17 +70,20 @@ L = {
         "choose_tf": "Какой <b>таймфрейм</b> хотите торговать?",
         "choose_asset": "Для какого <b>актива</b> нужен сигнал?",
         "signal_title": "📊 {asset} — <b>{tf}</b> сигнал",
-        "zones": "— <b>Buy</b>: {buy}\n— <b>Sell</b>: {sell}\n⛔ SL: {sl}\n🎯 TP1: {tp1}\n🎯 TP2: {tp2}",
+        "buy_head": "🟢 <b>BUY сценарий</b>",
+        "sell_head": "🔴 <b>SELL сценарий</b>",
+        "sl": "⛔ SL: {sl}",
+        "tp": "🎯 TP: {tps}",
+        "risk": "⚖️ <b>Риск-менеджмент</b>: риск 0.5–1.0% на сделку. Во время новостей SL обязателен.",
         "news_title": "📢 Новости, влияющие на торговлю",
         "news_body": (
-            "• <b>Высокое влияние</b>: CPI, NFP, FOMC, доходности UST, индекс DXY\n"
-            "• <b>Эффект</b>: сильный доллар → золото/BTC вниз; слабые данные → вверх\n"
+            "• <b>Высокое влияние</b>: CPI, NFP, FOMC, доходности UST, DXY\n"
+            "• <b>Эффект</b>: сильный USD → золото/BTC вниз; мягкие данные → рост\n"
         ),
         "links": "🔗 Ссылки:\n{links}",
-        "saved": "✅ Сохранено: язык: {lang_code}, таймфрейм: {tf}, актив: {asset}\n👉 /signal — получить сигнал по профилю",
-        "only_you": "❌ Этот бот доступен только одному пользователю.",
+        "saved": "✅ Сохранено: язык: {lang_code}, таймфрейм: {tf}, актив: {asset}\n👉 /signal — сигнал по профилю",
+        "only_you": "❌ Этот бот доступен только вам.",
         "start_ok": "✅ Бот запущен. Сначала выберите язык.",
-        "sent": "✅ Сигнал отправлен.",
         "sched_head": "⏰ Автографик (UZT): {sched}",
     },
     "en": {
@@ -83,7 +91,11 @@ L = {
         "choose_tf": "Which <b>timeframe</b> do you trade?",
         "choose_asset": "Which <b>asset</b> do you want a signal for?",
         "signal_title": "📊 {asset} — <b>{tf}</b> signal",
-        "zones": "— <b>Buy</b>: {buy}\n— <b>Sell</b>: {sell}\n⛔ SL: {sl}\n🎯 TP1: {tp1}\n🎯 TP2: {tp2}",
+        "buy_head": "🟢 <b>BUY scenario</b>",
+        "sell_head": "🔴 <b>SELL scenario</b>",
+        "sl": "⛔ SL: {sl}",
+        "tp": "🎯 TP: {tps}",
+        "risk": "⚖️ <b>Risk management</b>: risk 0.5–1.0% per trade. SL is mandatory around news.",
         "news_title": "📢 Market-moving news",
         "news_body": (
             "• <b>High-impact</b>: CPI, NFP, FOMC, UST yields, DXY\n"
@@ -91,23 +103,21 @@ L = {
         ),
         "links": "🔗 Links:\n{links}",
         "saved": "✅ Saved: lang: {lang_code}, timeframe: {tf}, asset: {asset}\n👉 /signal — get signal with this profile",
-        "only_you": "❌ This bot is restricted to a single user.",
+        "only_you": "❌ This bot is restricted to you.",
         "start_ok": "✅ Bot is running. Please choose a language.",
-        "sent": "✅ Signal sent.",
         "sched_head": "⏰ Auto schedule (UZT): {sched}",
     },
 }
 
 LANG_BTNS = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton(text="🇺🇿 Uzbek", callback_data="lang:uz"),
+    [InlineKeyboardButton(text="🇺🇿 Uzbek",  callback_data="lang:uz"),
      InlineKeyboardButton(text="🇷🇺 Русский", callback_data="lang:ru"),
      InlineKeyboardButton(text="🇬🇧 English", callback_data="lang:en")]
 ])
 
 TF_LIST = ["1m", "5m", "15m", "1h", "4h", "1d"]
 def tf_kb(lang: str) -> InlineKeyboardMarkup:
-    rows = []
-    row = []
+    rows, row = [], []
     for i, tf in enumerate(TF_LIST, 1):
         row.append(InlineKeyboardButton(text=tf, callback_data=f"tf:{tf}"))
         if i % 3 == 0:
@@ -117,8 +127,8 @@ def tf_kb(lang: str) -> InlineKeyboardMarkup:
 
 ASSETS = {
     "XAUUSD": {"name": {"uz": "Gold (XAU/USD)", "ru": "Золото (XAU/USD)", "en": "Gold (XAU/USD)"}},
-    "EURUSD": {"name": {"uz": "USD (EUR/USD)", "ru": "USD (EUR/USD)", "en": "USD (EUR/USD)"}},
-    "BTCUSD": {"name": {"uz": "BTC (BTC/USD)", "ru": "BTC (BTC/USD)", "en": "BTC (BTC/USD)"}},
+    "EURUSD": {"name": {"uz": "USD (EUR/USD)",  "ru": "USD (EUR/USD)",   "en": "USD (EUR/USD)"}},
+    "BTCUSD": {"name": {"uz": "BTC (BTC/USD)",  "ru": "BTC (BTC/USD)",   "en": "BTC (BTC/USD)"}},
 }
 def asset_kb(lang: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -130,26 +140,71 @@ def asset_kb(lang: str) -> InlineKeyboardMarkup:
 def t(lang: str, key: str, **kw) -> str:
     return L.get(lang, L["en"]).get(key, "").format(**kw)
 
-# ================== SIGNAL GENERATOR (shablon) ==================
-def signal_levels(asset: str, tf: str) -> Tuple[str, str, str, str, str]:
-    if asset == "XAUUSD":  # Gold
-        if tf in ("1d", "4h", "1h"):
-            return "3331–3334", "3328 pastida", "3324", "3345", "3360"
-        else:
-            return "3333–3335", "3328 pastida", "3329", "3342", "3348"
-    if asset == "EURUSD":  # USD proxy (EURUSD)
-        if tf in ("1d", "4h", "1h"):
-            return "1.1000–1.1020", "1.0960 pastida", "1.0945", "1.1060", "1.1100"
-        else:
-            return "1.1005–1.1015", "1.0985 pastida", "1.0975", "1.1030", "1.1050"
-    if asset == "BTCUSD":
-        if tf in ("1d", "4h", "1h"):
-            return "116000–117000", "114500 pastida", "114000", "118500", "121000"
-        else:
-            return "116300–116800", "115500 pastida", "115200", "117600", "118800"
-    return "—", "—", "—", "—", "—"
+# ================== PROFESSIONAL SIGNALLAR ==================
+# Har bir aktiv uchun alohida BUY/SELL, mustaqil SL va bir nechta TP.
+def pro_signal_blocks(asset: str, tf: str, lang: str) -> Tuple[str, str]:
+    # TF ga qarab minor o‘zgartirishlar kiritamiz (scalping vs swing)
+    is_swing = tf in ("1d", "4h", "1h")
 
-def news_links(asset: str, lang: str) -> str:
+    if asset == "XAUUSD":  # GOLD
+        if is_swing:
+            buy_entry = "3356–3360 (D1/H4 yopilish ustida)"
+            buy_sl    = "3338"
+            buy_tps   = ["3385", "3410", "3440"]
+
+            sell_entry= "3305 aniq buzilganda"
+            sell_sl   = "3320"
+            sell_tps  = ["3295", "3275"]
+        else:
+            buy_entry = "3340–3342 ustida M15/H1 yopilish"
+            buy_sl    = "3332"
+            buy_tps   = ["3348", "3356", "3368"]
+
+            sell_entry= "3325 pastida M15/H1 yopilish"
+            sell_sl   = "3332"
+            sell_tps  = ["3315", "3305", "3295"]
+
+    elif asset == "BTCUSD":
+        if is_swing:
+            buy_entry = "116000–117000"
+            buy_sl    = "114000"
+            buy_tps   = ["118500", "121000"]
+
+            sell_entry= "115000 ostida mustahkamlanish"
+            sell_sl   = "116100"
+            sell_tps  = ["113800", "112500"]
+        else:
+            buy_entry = "116300–116800"
+            buy_sl    = "115200"
+            buy_tps   = ["117600", "118800"]
+
+            sell_entry= "115500 ostida M15 yopilish"
+            sell_sl   = "116100"
+            sell_tps  = ["114600", "113800"]
+
+    else:  # EURUSD (USD yo'nalishi)
+        if is_swing:
+            buy_entry = "1.1000–1.1020"
+            buy_sl    = "1.0945"
+            buy_tps   = ["1.1060", "1.1100"]
+
+            sell_entry= "1.0985 pastida H1/H4 yopilish"
+            sell_sl   = "1.1000"
+            sell_tps  = ["1.0965", "1.0945"]
+        else:
+            buy_entry = "1.1005–1.1015"
+            buy_sl    = "1.0990"
+            buy_tps   = ["1.1030", "1.1050"]
+
+            sell_entry= "1.0985 ostida M15/H1 yopilish"
+            sell_sl   = "1.1000"
+            sell_tps  = ["1.0965", "1.0945"]
+
+    buy_block  = f"{t(lang,'buy_head')}\n• Entry: {buy_entry}\n{t(lang,'sl', sl=buy_sl)}\n{t(lang,'tp', tps='/'.join(buy_tps))}"
+    sell_block = f"{t(lang,'sell_head')}\n• Entry: {sell_entry}\n{t(lang,'sl', sl=sell_sl)}\n{t(lang,'tp', tps='/'.join(sell_tps))}"
+    return buy_block, sell_block
+
+def news_links(asset: str) -> str:
     calendars = [
         ("ForexFactory Calendar", "https://www.forexfactory.com/calendar"),
         ("Investing.com Calendar", "https://www.investing.com/economic-calendar/"),
@@ -165,7 +220,7 @@ def news_links(asset: str, lang: str) -> str:
             ("USD News (Reuters)", "https://www.reuters.com/markets/us/"),
             ("FOMC Statements", "https://www.federalreserve.gov/monetarypolicy.htm"),
         ]
-    else:  # BTCUSD
+    else:
         extras = [
             ("Bitcoin News (CoinDesk)", "https://www.coindesk.com/"),
             ("Crypto Calendar (CoinMarketCal)", "https://coinmarketcal.com/en/"),
@@ -173,25 +228,47 @@ def news_links(asset: str, lang: str) -> str:
     items = calendars + extras
     return "\n".join([f"• <a href='{u}'>{n}</a>" for (n, u) in items])
 
+def build_news_outlook(lang: str) -> str:
+    if lang == "ru":
+        return (
+            "📢 <b>Сегодняшние ключевые факторы</b>\n"
+            "• CPI / NFP / FOMC: импульс USD\n"
+            "• DXY и доходности UST → давление на золото и EUR; мягкие данные поддержат рост\n"
+        )
+    if lang == "en":
+        return (
+            "📢 <b>Today’s market drivers</b>\n"
+            "• CPI / NFP / FOMC: USD impulse\n"
+            "• DXY & UST yields → pressure on Gold/EUR; soft data supports upside\n"
+        )
+    return (
+        "📢 <b>Bugungi asosiy drayverlar</b>\n"
+        "• CPI / NFP / FOMC: USD impuls beradi\n"
+        "• DXY va AQSh rentabelliklari → Oltin/EUR bosim ostida; yumshoq ma’lumotlar o‘sishni qo‘llaydi\n"
+    )
+
 async def send_composed_signal(chat_id: int, lang: str, asset: str, tf: str):
     title = t(lang, "signal_title", asset=ASSETS[asset]["name"][lang], tf=tf)
-    buy, sell, sl, tp1, tp2 = signal_levels(asset, tf)
-    zones = t(lang, "zones", buy=buy, sell=sell, sl=sl, tp1=tp1, tp2=tp2)
-    await bot.send_message(chat_id, f"{title}\n{zones}")
-    await bot.send_message(chat_id, f"{t(lang, 'news_title')}\n{t(lang,'news_body')}\n" +
-                           t(lang, "links", links=news_links(asset, lang)))
+    buy_block, sell_block = pro_signal_blocks(asset, tf, lang)
+    risk = t(lang, "risk")
+    news_title = t(lang, "news_title")
+    news_body  = t(lang, "news_body")
+    links      = t(lang, "links", links=news_links(asset))
+
+    await bot.send_message(chat_id, f"{title}\n\n{buy_block}\n\n{sell_block}\n\n{risk}")
+    await bot.send_message(chat_id, f"{news_title}\n{news_body}\n{links}")
 
 # ================== SCHEDULER (ixtiyoriy — avtomatik jo‘natish) ==================
-def parse_hhmm(s: str) -> time:
+def parse_hhmm(s: str) -> dtime:
     h, m = map(int, s.strip().split(":"))
-    return time(h, m, tzinfo=TZ)
+    return dtime(h, m, tzinfo=TZ)
 
-def next_run_for(ti: time, now: datetime) -> datetime:
+def next_run_for(ti: dtime, now: datetime) -> datetime:
     candidate = now.replace(hour=ti.hour, minute=ti.minute, second=0, microsecond=0)
     return candidate if candidate > now else candidate + timedelta(days=1)
 
-def current_schedule_times() -> List[time]:
-    times = []
+def current_schedule_times() -> List[dtime]:
+    times: List[dtime] = []
     if SCHEDULE_1:
         times.append(parse_hhmm(SCHEDULE_1))
     if SCHEDULE_2 and SCHEDULE_2.strip():
@@ -206,6 +283,7 @@ async def scheduler():
             await asyncio.sleep(60); continue
         next_run = min(next_run_for(ti, now) for ti in times)
         await asyncio.sleep(max(1, int((next_run - now).total_seconds())))
+        # default profil (agar hali tanlanmagan bo'lsa)
         lang = PREFS.get(USER_ID, {}).get("lang", "uz")
         tf   = PREFS.get(USER_ID, {}).get("tf", "1d")
         asset= PREFS.get(USER_ID, {}).get("asset", "XAUUSD")
@@ -256,7 +334,6 @@ async def choose_asset(c: CallbackQuery):
     tf   = PREFS.get(USER_ID, {}).get("tf", "1d")
     PREFS[USER_ID]["asset"] = asset
     pretty = ASSETS[asset]["name"][lang]
-    # lang_code sifatida yuboramiz (oldingi xatoni tuzatadi)
     await c.message.answer(t(lang, "saved", lang_code=lang.upper(), tf=tf, asset=pretty))
     await send_composed_signal(c.message.chat.id, lang, asset, tf)
     await c.answer()
@@ -298,8 +375,9 @@ async def run_http():
 
 # ================== ENTRYPOINT ==================
 async def main():
+    # Web Service bo'lsa port talabini bajarish uchun HTTP serverni ishga tushiramiz
     asyncio.create_task(run_http())
-    # Ixtiyoriy avtomatik jo‘natish — xohlasangiz o‘chirib qo‘yishingiz mumkin:
+    # Ixtiyoriy: kuniga 2 marta avtomatik signal (SCHEDULE_1/2 asosida)
     asyncio.create_task(scheduler())
     await dp.start_polling(bot)
 
