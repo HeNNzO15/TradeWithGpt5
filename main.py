@@ -17,15 +17,13 @@ from aiogram.client.default import DefaultBotProperties
 from fastapi import FastAPI
 import uvicorn
 
-# ================== ENV + ICHKI DEFAULTLAR ==================
-# ❗ Siz so‘raganidek token va ID kod ichida DEFAULT sifatida bor.
-#    Agar Render’da ENV berilsa, ENV ustun bo‘ladi.
-BOT_TOKEN  = os.getenv("BOT_TOKEN", "8273684666:AAHStkIEUBSsCFdhps_yMYfRGEOIP4Q8VHw")  # BotFather token (default ichida)
-USER_ID    = int(os.getenv("USER_ID", "1370058711"))                                     # Sizning Telegram ID (default ichida)
-SCHEDULE_1 = os.getenv("SCHEDULE_1", "11:55")   # HH:MM (UZT)
-SCHEDULE_2 = os.getenv("SCHEDULE_2", "18:55")   # HH:MM (UZT), ixtiyoriy
+# ================== ENV + DEFAULT ==================
+BOT_TOKEN  = os.getenv("BOT_TOKEN", "8273684666:AAHStkIEUBSsCFdhps_yMYfRGEOIP4Q8VHw")
+USER_ID    = int(os.getenv("USER_ID", "1370058711"))
+SCHEDULE_1 = os.getenv("SCHEDULE_1", "11:55")
+SCHEDULE_2 = os.getenv("SCHEDULE_2", "18:55")
 TZ_NAME    = os.getenv("TZ", "Asia/Tashkent")
-PORT       = int(os.getenv("PORT", "8000"))     # Render Web Service uchun
+PORT       = int(os.getenv("PORT", "8000"))
 
 if not BOT_TOKEN:
     raise SystemExit("❌ BOT_TOKEN env o‘rnatilmagan va default ham berilmagan")
@@ -35,12 +33,10 @@ if USER_ID == 0:
 TZ = ZoneInfo(TZ_NAME)
 
 # ================== TELEGRAM ==================
-# aiogram 3.7+ uchun parse_mode shu tarzda beriladi:
 bot = Bot(BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp  = Dispatcher()
 
-# ================== KICHIK SAQLAGICH ==================
-# Foydalanuvchi afzalliklari (oddiy xotira; kerak bo‘lsa DBga oson ko‘chadi)
+# ================== SAQLAGICH ==================
 PREFS: Dict[int, Dict[str, str]] = {}
 
 # ================== LOKALIZATSIYA ==================
@@ -57,7 +53,8 @@ L = {
             "• <b>Ta’sir mexanizmi</b>: kuchli USD → oltin/BTC pasayishi; yumshoq ma’lumotlar → oltin/BTC o‘sishi\n"
         ),
         "links": "🔗 Havolalar:\n{links}",
-        "saved": "✅ Tanlov saqlandi: til: {lang}, timeframe: {tf}, aktiv: {asset}\n👉 /signal — istalgan payt shu profil bo‘yicha signal",
+        # lang -> lang_code ga o'zgartirildi
+        "saved": "✅ Tanlov saqlandi: til: {lang_code}, timeframe: {tf}, aktiv: {asset}\n👉 /signal — istalgan payt shu profil bo‘yicha signal",
         "only_you": "❌ Bu bot faqat bitta foydalanuvchi uchun ruxsat etilgan.",
         "start_ok": "✅ Bot ishga tushdi. Avval tilni tanlang.",
         "sent": "✅ Signal yuborildi.",
@@ -75,7 +72,7 @@ L = {
             "• <b>Эффект</b>: сильный доллар → золото/BTC вниз; слабые данные → вверх\n"
         ),
         "links": "🔗 Ссылки:\n{links}",
-        "saved": "✅ Сохранено: язык: {lang}, таймфрейм: {tf}, актив: {asset}\n👉 /signal — получить сигнал по профилю",
+        "saved": "✅ Сохранено: язык: {lang_code}, таймфрейм: {tf}, актив: {asset}\n👉 /signal — получить сигнал по профилю",
         "only_you": "❌ Этот бот доступен только одному пользователю.",
         "start_ok": "✅ Бот запущен. Сначала выберите язык.",
         "sent": "✅ Сигнал отправлен.",
@@ -93,7 +90,7 @@ L = {
             "• <b>Effect</b>: strong USD → Gold/BTC down; soft data → up\n"
         ),
         "links": "🔗 Links:\n{links}",
-        "saved": "✅ Saved: lang: {lang}, timeframe: {tf}, asset: {asset}\n👉 /signal — get signal with this profile",
+        "saved": "✅ Saved: lang: {lang_code}, timeframe: {tf}, asset: {asset}\n👉 /signal — get signal with this profile",
         "only_you": "❌ This bot is restricted to a single user.",
         "start_ok": "✅ Bot is running. Please choose a language.",
         "sent": "✅ Signal sent.",
@@ -259,7 +256,8 @@ async def choose_asset(c: CallbackQuery):
     tf   = PREFS.get(USER_ID, {}).get("tf", "1d")
     PREFS[USER_ID]["asset"] = asset
     pretty = ASSETS[asset]["name"][lang]
-    await c.message.answer(t(lang, "saved", lang=lang.upper(), tf=tf, asset=pretty))
+    # lang_code sifatida yuboramiz (oldingi xatoni tuzatadi)
+    await c.message.answer(t(lang, "saved", lang_code=lang.upper(), tf=tf, asset=pretty))
     await send_composed_signal(c.message.chat.id, lang, asset, tf)
     await c.answer()
 
@@ -300,8 +298,9 @@ async def run_http():
 
 # ================== ENTRYPOINT ==================
 async def main():
-    asyncio.create_task(run_http())   # Web Service bo'lsa port band bo'ladi
-    asyncio.create_task(scheduler())  # ixtiyoriy avtomatik signal
+    asyncio.create_task(run_http())
+    # Ixtiyoriy avtomatik jo‘natish — xohlasangiz o‘chirib qo‘yishingiz mumkin:
+    asyncio.create_task(scheduler())
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
