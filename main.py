@@ -16,8 +16,8 @@ from fastapi import FastAPI
 import uvicorn
 
 # ================== ENV ==================
-BOT_TOKEN  = os.getenv("8273684666:AAHStkIEUBSsCFdhps_yMYfRGEOIP4Q8VHw")  # BotFather token
-USER_ID    = int(os.getenv("1370058711", "0"))  # Sizning Telegram ID
+BOT_TOKEN  = os.getenv("BOT_TOKEN", "8273684666:AAHStkIEUBSsCFdhps_yMYfRGEOIP4Q8VHw")  # BotFather token
+USER_ID    = int(os.getenv("USER_ID", "1370058711"))  # Sizning Telegram ID
 SCHEDULE_1 = os.getenv("SCHEDULE_1", "11:55")  # HH:MM (UZT)
 SCHEDULE_2 = os.getenv("SCHEDULE_2", "18:55")  # HH:MM (UZT), ixtiyoriy
 TZ_NAME    = os.getenv("TZ", "Asia/Tashkent")
