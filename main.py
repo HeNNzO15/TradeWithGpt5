@@ -412,7 +412,7 @@ async def subscribe_cmd(message: Message):
     save_json(SUBS_FILE, SUBS)
     await message.answer(t(uid, "sub_on") + "\n" + t(uid, "best_times", t1=SCHEDULE_1, t2=SCHEDULE_2))
 
-@dp.message(Command("unsubscribe")))
+@dp.message(Command("unsubscribe"))
 async def unsubscribe_cmd(message: Message):
     uid = message.from_user.id
     if not is_allowed(uid): return await message.answer(t(uid, "no_access"))
@@ -429,7 +429,7 @@ async def profile_cmd(message: Message):
     await message.answer(t(uid, "profile", lang=lang_of(uid), asset=prefs["asset"], tf=prefs["tf"], sub=sub))
 
 # ---- Manual signal
-@dp.message(Command("signal")))
+@dp.message(Command("signal"))
 async def signal_cmd(message: Message):
     uid = message.from_user.id
     if not is_allowed(uid): return await message.answer(t(uid, "no_access"))
@@ -438,7 +438,7 @@ async def signal_cmd(message: Message):
         return await message.answer(t(uid, "need_profile"))
     await send_signal_message(uid, lang_of(uid), prefs["asset"], prefs["tf"])
 
-@dp.message(Command("now")))
+@dp.message(Command("now"))
 async def now_cmd(message: Message):
     uid = message.from_user.id
     if not is_allowed(uid): return await message.answer(t(uid, "no_access"))
