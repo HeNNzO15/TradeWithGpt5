@@ -404,7 +404,7 @@ async def set_tf(c: CallbackQuery):
     await c.answer()
 
 # ---- Subscribe / Unsubscribe / Profile
-@dp.message(Command("subscribe")))
+@dp.message(Command("subscribe"))
 async def subscribe_cmd(message: Message):
     uid = message.from_user.id
     if not is_allowed(uid): return await message.answer(t(uid, "no_access"))
