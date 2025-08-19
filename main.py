@@ -306,12 +306,13 @@ async def start_cmd(message: Message):
     await message.answer(t(uid, "best_times", t1=t1, t2=t2))
     await message.answer(t(uid, "lang_choose"), reply_markup=kb)
 
-@dp.callback_query(F.data.startswith("lang_")))
+@dp.callback_query(F.data.startswith("lang_"))
 async def set_lang(c: CallbackQuery):
     lang = c.data.split("_")[1]
     USER_LANG[str(c.from_user.id)] = lang
     save_json(LANG_FILE, USER_LANG)
     await c.message.answer(f"✅ Language set: {lang.upper()}")
+    await c.answer()
 
 # ---- Admin: allow/deny/list
 @dp.message(Command("allow"))
@@ -380,12 +381,12 @@ async def set_asset(c: CallbackQuery):
 
     # TF tanlash:
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="1m", callback_data="set_tf_1m"),
-         InlineKeyboardButton(text="5m", callback_data="set_tf_5m"),
+        [InlineKeyboardButton(text="1m",  callback_data="set_tf_1m"),
+         InlineKeyboardButton(text="5m",  callback_data="set_tf_5m"),
          InlineKeyboardButton(text="15m", callback_data="set_tf_15m")],
-        [InlineKeyboardButton(text="1h", callback_data="set_tf_1h"),
-         InlineKeyboardButton(text="4h", callback_data="set_tf_4h"),
-         InlineKeyboardButton(text="1d", callback_data="set_tf_1d")],
+        [InlineKeyboardButton(text="1h",  callback_data="set_tf_1h"),
+         InlineKeyboardButton(text="4h",  callback_data="set_tf_4h"),
+         InlineKeyboardButton(text="1d",  callback_data="set_tf_1d")],
     ])
     await c.message.answer(t(uid, "choose_tf"), reply_markup=kb)
     await c.answer()
@@ -403,7 +404,7 @@ async def set_tf(c: CallbackQuery):
     await c.answer()
 
 # ---- Subscribe / Unsubscribe / Profile
-@dp.message(Command("subscribe"))
+@dp.message(Command("subscribe")))
 async def subscribe_cmd(message: Message):
     uid = message.from_user.id
     if not is_allowed(uid): return await message.answer(t(uid, "no_access"))
@@ -411,7 +412,7 @@ async def subscribe_cmd(message: Message):
     save_json(SUBS_FILE, SUBS)
     await message.answer(t(uid, "sub_on") + "\n" + t(uid, "best_times", t1=SCHEDULE_1, t2=SCHEDULE_2))
 
-@dp.message(Command("unsubscribe"))
+@dp.message(Command("unsubscribe")))
 async def unsubscribe_cmd(message: Message):
     uid = message.from_user.id
     if not is_allowed(uid): return await message.answer(t(uid, "no_access"))
@@ -428,7 +429,7 @@ async def profile_cmd(message: Message):
     await message.answer(t(uid, "profile", lang=lang_of(uid), asset=prefs["asset"], tf=prefs["tf"], sub=sub))
 
 # ---- Manual signal
-@dp.message(Command("signal"))
+@dp.message(Command("signal")))
 async def signal_cmd(message: Message):
     uid = message.from_user.id
     if not is_allowed(uid): return await message.answer(t(uid, "no_access"))
@@ -437,7 +438,7 @@ async def signal_cmd(message: Message):
         return await message.answer(t(uid, "need_profile"))
     await send_signal_message(uid, lang_of(uid), prefs["asset"], prefs["tf"])
 
-@dp.message(Command("now"))
+@dp.message(Command("now")))
 async def now_cmd(message: Message):
     uid = message.from_user.id
     if not is_allowed(uid): return await message.answer(t(uid, "no_access"))
